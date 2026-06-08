@@ -8,6 +8,11 @@
 :root{--bg-primary:#f8f5ef;--bg-secondary:#efe9db;--bg-card:rgba(255,253,248,.92);--bg-input:rgba(255,253,248,.95);--text-primary:#2c1810;--text-secondary:#6b5a4e;--text-muted:#a08b7a;--accent:#8b2500;--accent-glow:rgba(139,37,0,.15);--border:rgba(139,37,0,.12);--border-light:rgba(139,37,0,.06);--shadow:rgba(44,24,16,.08);--think-bg:#fdf6e3;--think-border:#e8d5b0;--think-text:#8b6914;--code-bg:#f5f0e8;--scrollbar:#d4c4a8;--user-gradient:linear-gradient(135deg,#8b2500,#c44536);--glass:rgba(255,253,248,.75);--mode-fast:#2e7d32;--mode-think:#1565c0;--mode-deep:#6a1b9a;--tab-bg:#efe9db;--tab-active:#f8f5ef;--tab-hover:#e8e0d0;--sidebar-bg:rgba(239,233,219,.95);--source-bg:#f0f4ff;--source-border:#d0d8f0}
 [data-theme="dark"]{--bg-primary:#1a1410;--bg-secondary:#2a2018;--bg-card:rgba(35,28,22,.92);--bg-input:rgba(40,32,25,.95);--text-primary:#e8dcd0;--text-secondary:#b8a898;--text-muted:#7a6a5a;--accent:#e85d3a;--accent-glow:rgba(232,93,58,.2);--border:rgba(232,93,58,.15);--border-light:rgba(232,93,58,.08);--shadow:rgba(0,0,0,.3);--think-bg:#2a2418;--think-border:#4a3a28;--think-text:#d4a853;--code-bg:#241c14;--scrollbar:#4a3a28;--user-gradient:linear-gradient(135deg,#e85d3a,#ff7b5c);--glass:rgba(35,28,22,.8);--mode-fast:#66bb6a;--mode-think:#42a5f5;--mode-deep:#ab47bc;--tab-bg:#1a1410;--tab-active:#2a2018;--tab-hover:#352c22;--sidebar-bg:rgba(26,20,16,.95);--source-bg:#1a2332;--source-border:#2a3a52}
 *{margin:0;padding:0;box-sizing:border-box}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+.typing-cursor{display:inline-block;width:2px;height:1em;background:var(--accent);margin-left:2px;animation:blink 1s infinite;vertical-align:text-bottom}
+.stream-content{transition:none}
+.think-box,.sources-box{animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
 body{font-family:"Noto Serif SC","STSong","SimSun",serif;background:var(--bg-primary);color:var(--text-primary);height:100vh;display:flex;transition:background .5s;overflow:hidden}
 .bg-art{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden}
 .bg-art::before{content:'';position:absolute;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(ellipse at 20% 50%,rgba(139,37,0,.04),transparent 50%),radial-gradient(ellipse at 80% 20%,rgba(196,69,54,.03),transparent 50%);animation:bgF 30s ease-in-out infinite}
@@ -281,42 +286,41 @@ function removeImg(i){attachedImages.splice(i,1);renderPreview()}
 
 // ===== 维基百科联网搜索 =====
 async function searchWikipedia(query){
-    const keywords=query.replace(/[？?！!。，,、\s]+/g,' ').trim().split(' ').filter(w=>w.length>1);
+    // 短问题、问候语、身份问题不需要搜索参考资料
+    if(query.length<8||/^[你我他她它]是|^[你好嗨哈嘿]|^(谢谢|好的|OK|ok|嗯|哦|你是谁|我是谁)/.test(query))return[];
+    const keywords=query.replace(/[？?！!。，,、\s]+/g,' ').trim().split(' ').filter(w=>w.length>1&&!['你是','我是','他是','她是','什么是','谁是','这是','那是','怎么','如何','为什么','可以','能够','请','我','你','他','她','它','的','了','吗','呢','吧','啊','哦','嗯','好','是','在','有','不','都','就','也','还','这','那','和','与','或'].includes(w));
     const sources=[];
     const seen=new Set();
-    for(const kw of keywords.slice(0,3)){
+    // 中文维基百科
+    for(const kw of keywords.slice(0,5)){
         try{
-            const r=await fetch('https://zh.wikipedia.org/w/api.php?action=query&list=search&srsearch='+encodeURIComponent(kw)+'&format=json&srlimit=2&origin=*');
-            if(!r.ok)continue;
-            const data=await r.json();
-            if(data.query&&data.query.search){
-                data.query.search.forEach(item=>{
-                    if(!seen.has(item.title)){
-                        seen.add(item.title);
-                        sources.push({
-                            title:item.title,
-                            url:'https://zh.wikipedia.org/wiki/'+encodeURIComponent(item.title),
-                            snippet:item.snippet.replace(/<[^>]+>/g,'').substring(0,100),
-                            icon:'📖'
-                        });
-                    }
-                });
-            }
+            const r=await fetch('https://zh.wikipedia.org/w/api.php?action=query&list=search&srsearch='+encodeURIComponent(kw)+'&format=json&srlimit=5&origin=*');
+            if(r.ok){const data=await r.json();if(data.query?.search)data.query.search.forEach(item=>{if(!seen.has(item.title)){seen.add(item.title);sources.push({title:item.title,url:'https://zh.wikipedia.org/wiki/'+encodeURIComponent(item.title),snippet:item.snippet.replace(/<[^>]+>/g,'').substring(0,120),icon:'📖',source:'中文维基百科'})}})}
         }catch(e){}
     }
-    if(sources.length===0){
-        keywords.slice(0,2).forEach(kw=>{
-            sources.push({title:kw+' - 维基百科',url:'https://zh.wikipedia.org/w/index.php?search='+encodeURIComponent(kw),snippet:'点击查看详情',icon:'📖'});
-        });
+    // 英文维基百科
+    for(const kw of keywords.slice(0,3)){
+        try{
+            const r=await fetch('https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch='+encodeURIComponent(kw)+'&format=json&srlimit=3&origin=*');
+            if(r.ok){const data=await r.json();if(data.query?.search)data.query.search.forEach(item=>{if(!seen.has(item.title)){seen.add(item.title);sources.push({title:item.title,url:'https://en.wikipedia.org/wiki/'+encodeURIComponent(item.title),snippet:item.snippet.replace(/<[^>]+>/g,'').substring(0,120),icon:'🌐',source:'English Wikipedia'})}})}
+        }catch(e){}
     }
-    return sources;
+    // 百度百科
+    for(const kw of keywords.slice(0,3)){
+        try{
+            const r=await fetch('https://baike.baidu.com/api/openapi/BaikeLemmaCardApi?scope=103&format=json&appid=3827090214&bk_key='+encodeURIComponent(kw)+'&bk_length=100');
+            if(r.ok){const data=await r.json();if(data.card?.[0]){const c=data.card[0];if(!seen.has(c.title)){seen.add(c.title);sources.push({title:c.title,url:'https://baike.baidu.com/item/'+encodeURIComponent(c.title),snippet:(c.desc||'').substring(0,120),icon:'📕',source:'百度百科'})}}}
+        }catch(e){}
+    }
+    if(sources.length<3)keywords.slice(0,3).forEach(kw=>{sources.push({title:kw+' - 维基百科',url:'https://zh.wikipedia.org/w/index.php?search='+encodeURIComponent(kw),snippet:'点击查看相关条目',icon:'📖',source:'维基百科'})});
+    return sources.slice(0,15);
 }
 function renderSources(sources){
-    return `<div class="sources-box"><div class="sources-header" onclick="this.nextElementSibling.classList.toggle('show')"><div class="sources-title">📚 参考来源 · ${sources.length}篇</div><span class="sources-toggle">▼</span></div><div class="sources-list">${sources.map(s=>`<div class="source-item"><div class="source-icon">${s.icon}</div><div class="source-info"><div class="source-name">${esc(s.title)}</div><a class="source-url" href="${s.url}" target="_blank">${s.url}</a>${s.snippet?'<div style="font-size:9px;color:var(--text-muted);margin-top:2px">'+esc(s.snippet)+'</div>':''}</div></div>`).join('')}</div></div>`;
+    return `<div class="sources-box"><div class="sources-header" onclick="this.nextElementSibling.classList.toggle('show')"><div class="sources-title">📚 参考来源 · ${sources.length}篇</div><span class="sources-toggle">▼</span></div><div class="sources-list">${sources.map(s=>`<div class="source-item"><div class="source-icon">${s.icon}</div><div class="source-info"><div class="source-name">${esc(s.title)}</div><a class="source-url" href="${s.url}" target="_blank">${s.url}</a>${s.snippet?'<div style="font-size:9px;color:var(--text-muted);margin-top:2px">'+esc(s.snippet)+'</div>':''}${s.source?'<div style="font-size:8px;color:var(--accent);margin-top:2px">来源：'+s.source+'</div>':''}</div></div>`).join('')}</div></div>`;
 }
 
 // ===== 聊天渲染 =====
-function renderChat(){const t=getActiveTab(),c=document.getElementById('chat');if(!t||t.messages.length===0){c.innerHTML='<div class="welcome"><div class="seal">墨</div><h2>墨韵智能问答</h2><p>多标签页 · 多模型 · 知识溯源</p><div class="features"><div class="feature">📑 多标签</div><div class="feature">💬 V2.5</div><div class="feature">🧠 Pro</div><div class="feature">👁️ Omni</div><div class="feature">📚 历史</div></div></div>';return}c.innerHTML='';t.messages.forEach(m=>{if(m.role==='user'){let h=m.content.replace(/</g,'&lt;').replace(/\n/g,'<br>');if(m.images)h+='<br><span style="font-size:10px;opacity:.8">📎 '+m.images.length+'张图片</span>';addDom('user',h)}else{let h='';if(m.thk)h+='<div class="think-box"><div class="think-hdr">💭 思考过程</div><div class="think-txt">'+esc(m.thk)+'</div></div>';h+=typeof marked!=='undefined'?marked.parse(m.content):esc(m.content);if(m.sources)h+=renderSources(m.sources);addDom('ai',h,m.mode)}});scrollBottom()}
+function renderChat(){const t=getActiveTab(),c=document.getElementById('chat');if(!t||t.messages.length===0&&!t.streamFull){c.innerHTML='<div class="welcome"><div class="seal">墨</div><h2>墨韵智能问答</h2><p>多标签页 · 多模型 · 知识溯源</p><div class="features"><div class="feature">📑 多标签</div><div class="feature">💬 V2.5</div><div class="feature">🧠 Pro</div><div class="feature">👁️ Omni</div><div class="feature">📚 历史</div></div></div>';return}c.innerHTML='';t.messages.forEach(m=>{if(m.role==='user'){let h=m.content.replace(/</g,'&lt;').replace(/\n/g,'<br>');if(m.images)h+='<br><span style="font-size:10px;opacity:.8">📎 '+m.images.length+'张图片</span>';addDom('user',h)}else{let h='';if(m.thk)h+='<div class="think-box"><div class="think-hdr">💭 思考过程</div><div class="think-txt">'+esc(m.thk)+'</div></div>';h+=typeof marked!=='undefined'?marked.parse(m.content):esc(m.content);if(m.sources)h+=renderSources(m.sources);addDom('ai',h,m.mode)}});if(t.streamFull!==undefined){const d=document.createElement('div');d.className='msg ai';d.id='stream-'+t.id;d.innerHTML='<div class="avatar">墨</div><div class="bubble"></div>';c.appendChild(d);updateStreamDOM(t)}scrollBottom()}
 
 function addDom(role,html,mode){const w=document.querySelector('.welcome');if(w)w.remove();const d=document.createElement('div');d.className='msg '+role;const av=document.createElement('div');av.className='avatar';av.textContent=role==='user'?'你':'墨';const b=document.createElement('div');b.className='bubble';const ct=document.createElement('div');ct.className='bubble-content';ct.innerHTML=html;b.appendChild(ct);if(role==='ai'){const a=document.createElement('div');a.className='msg-actions';a.innerHTML='<button class="msg-action-btn" onclick="copyMsg(this)">复制</button>';b.appendChild(a)}d.appendChild(av);d.appendChild(b);document.getElementById('chat').appendChild(d);return ct}
 
@@ -332,8 +336,9 @@ function exportChat(){const t=getActiveTab();if(!t||t.messages.length===0){showT
 // ===== 发送消息 =====
 async function send(){const input=document.getElementById('input'),q=input.value.trim();if(!q&&attachedImages.length===0)return;const tab=getActiveTab();if(!tab||tab.busy)return;tab.busy=true;document.getElementById('sendBtn').disabled=true;
 let userHtml=q.replace(/</g,'&lt;').replace(/\n/g,'<br>');if(attachedImages.length>0)userHtml+='<br><span style="font-size:10px;opacity:.8">📎 '+attachedImages.length+'张图片</span>';
-tab.messages.push({role:'user',content:q,images:attachedImages.length>0?attachedImages.map(i=>i.data):null});addDom('user',userHtml);updateTabTitle(tab.id);input.value='';input.style.height='auto';
-const bubble=addDom('ai','<div class="loader"><div class="spinner"></div><span>思考中...</span></div>');autoScroll();
+tab.messages.push({role:'user',content:q,images:attachedImages.length>0?attachedImages.map(i=>i.data):null});updateTabTitle(tab.id);input.value='';input.style.height='auto';
+if(activeTabId===tab.id){addDom('user',userHtml);const c=document.getElementById('chat');const w=c.querySelector('.welcome');if(w)w.remove();const d=document.createElement('div');d.className='msg ai';d.id='stream-'+tab.id;d.innerHTML='<div class="avatar">墨</div><div class="bubble"><div class="loader"><div class="spinner"></div><span>思考中...</span></div></div>';c.appendChild(d);scrollBottom()}
+tab.streamFull='';tab.streamThk='';tab.streamHasThink=false;
 try{
 const sysPrompt=selectedModel==='mimo-v2-omni'?'你是一个专业的多模态AI助手，能够理解图片内容并用中文详细回答。':'你是一个专业的AI助手，请用中文详细回答。';
 const msgs=[{role:'system',content:sysPrompt}];
@@ -342,11 +347,11 @@ recent.forEach(m=>{if(m.role==='user'){if(m.images&&m.images.length>0&&selectedM
 attachedImages=[];renderPreview();
 const model=selectedModel;const maxTok=model==='mimo-v2-omni'?2048:model==='mimo-v2.5-pro'?4096:512;
 const r=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+API_KEY},body:JSON.stringify({model,messages:msgs,max_completion_tokens:maxTok,temperature:.7,stream:true})});if(!r.ok)throw new Error('API错误: '+r.status);
-const reader=r.body.getReader(),dec=new TextDecoder();let full='',buf='',hasThink=false,thk='';
-while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop();for(const line of lines){if(!line.startsWith('data: '))continue;const d=line.slice(6).trim();if(d==='[DONE]')break;try{const j=JSON.parse(d),delta=j.choices?.[0]?.delta||{};const rc=delta.reasoning_content||'';if(rc){if(!hasThink){hasThink=true;bubble.innerHTML='<div class="think-box"><div class="think-hdr"><div class="spinner"></div> 思考中...</div><div class="think-txt"></div></div>'}thk+=rc;bubble.querySelector('.think-txt').textContent=thk;autoScroll()}const tc=delta.content||'';if(tc){full+=tc;let h='';if(hasThink)h+='<div class="think-box"><div class="think-hdr">💭 思考过程</div><div class="think-txt">'+esc(thk)+'</div></div>';h+=typeof marked!=='undefined'?marked.parse(full):'<div>'+esc(full)+'</div>';bubble.innerHTML=h;autoScroll()}}catch(e){}}}
-if(!full&&!hasThink)bubble.innerHTML='<span style="color:var(--text-muted)">未获取到回答</span>';
-if(full){const sources=await searchWikipedia(q);let finalHtml='';if(hasThink)finalHtml+='<div class="think-box"><div class="think-hdr">💭 思考过程</div><div class="think-txt">'+esc(thk)+'</div></div>';finalHtml+=typeof marked!=='undefined'?marked.parse(full):esc(full);finalHtml+=renderSources(sources);bubble.innerHTML=finalHtml;tab.messages.push({role:'assistant',content:full,mode:null,thk:thk||null,sources});saveTabs();saveToHistory()}}catch(e){bubble.innerHTML='<span style="color:#e53935">错误: '+e.message+'</span>'}
+const reader=r.body.getReader(),dec=new TextDecoder();let full='',buf='',hasThink=false,thk='',lastRender=0;
+while(true){const{done,value}=await reader.read();if(done)break;buf+=dec.decode(value,{stream:true});const lines=buf.split('\n');buf=lines.pop();for(const line of lines){if(!line.startsWith('data: '))continue;const d=line.slice(6).trim();if(d==='[DONE]')break;try{const j=JSON.parse(d),delta=j.choices?.[0]?.delta||{};const rc=delta.reasoning_content||'';if(rc){hasThink=true;thk+=rc;tab.streamThk=thk;tab.streamHasThink=true;if(activeTabId===tab.id)updateStreamDOM(tab)}const tc=delta.content||'';if(tc){full+=tc;tab.streamFull=full;const now=Date.now();if(now-lastRender>80||tc==='\n'){lastRender=now;if(activeTabId===tab.id)updateStreamDOM(tab)}}}catch(e){}}}
+if(full){let sources=[];try{sources=await searchWikipedia(q)}catch(e){}tab.messages.push({role:'assistant',content:full,mode:null,thk:thk||null,sources});saveTabs();saveToHistory()}delete tab.streamFull;delete tab.streamThk;delete tab.streamHasThink;if(activeTabId===tab.id)renderChat()}catch(e){console.error(e);delete tab.streamFull;delete tab.streamThk;delete tab.streamHasThink;if(activeTabId===tab.id)renderChat()}
 tab.busy=false;document.getElementById('sendBtn').disabled=false;input.focus()}
+function updateStreamDOM(tab){const el=document.getElementById('stream-'+tab.id);if(!el)return;const bubble=el.querySelector('.bubble');if(!bubble)return;const state=tab.streamFull?'content':tab.streamHasThink?'think':'load';if(tab._streamState===state){const ct=bubble.querySelector('.stream-content');if(ct&&tab.streamFull)ct.innerHTML=(typeof marked!=='undefined'?marked.parse(tab.streamFull):esc(tab.streamFull))+'<span class="typing-cursor"></span>';const tt=bubble.querySelector('.think-txt');if(tt&&tab.streamThk)tt.textContent=tab.streamThk}else{tab._streamState=state;let h='';if(tab.streamHasThink&&tab.streamThk)h+='<div class="think-box"><div class="think-hdr">💭 思考中...</div><div class="think-txt">'+esc(tab.streamThk)+'</div></div>';if(tab.streamFull)h+='<div class="stream-content">'+(typeof marked!=='undefined'?marked.parse(tab.streamFull):esc(tab.streamFull))+'<span class="typing-cursor"></span></div>';else if(!tab.streamHasThink)h='<div class="loader"><div class="spinner"></div><span>思考中...</span></div>';bubble.innerHTML=h}autoScroll()}
 
 const input=document.getElementById('input');input.addEventListener('input',function(){this.style.height='auto';this.style.height=Math.min(this.scrollHeight,80)+'px'});input.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send()}});
 loadTabs();renderTabs();renderChat();renderHistoryList();input.focus();
